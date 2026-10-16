@@ -3,7 +3,7 @@
 Nanaho provider plugin for [oh-my-pi](https://omp.sh/docs/plugins), targeting omp 18.11.1.
 
 - OpenAI Responses API, authenticated model discovery, and reasoning controls.
-- Masked API-key entry through omp's native `/login nanaho` flow.
+- Persistent endpoint setup and masked API-key entry through omp's native `/login nanaho` flow.
 - Optional five-hour, daily, weekly, and total account quotas in `/usage` and `/nanaho usage`; keys with no limits are supported.
 - Dynamic pricing from [models.dev](https://models.dev/) in omp's native `/model` picker, including cache and long-context rates. No bundled model list, price table, or separate pricing command.
 
@@ -13,19 +13,19 @@ Requires Bun and omp 18.11.1.
 
 ```sh
 bun install
-export NANAHO_BASE_URL="http://your-gateway:port/v1"
 omp --extension .
 ```
 
-`NANAHO_BASE_URL` is required for model discovery and account usage. It has no built-in server address. Use HTTPS when available: the supplied HTTP gateway sends credentials and prompts without transport encryption.
+No environment variables are required. On first login, the plugin asks for the gateway API base URL (including `/v1`) and saves it in omp's native `nanaho-omp.baseUrl` plugin setting. The API key is stored separately in omp's credential backend. No server address is built into the plugin. Use HTTPS when available: an HTTP gateway sends credentials and prompts without transport encryption.
 
 Inside omp:
 
 ```text
 /login nanaho
-/nanaho refresh
 /model
 ```
+
+First-time `/login nanaho` asks for the endpoint, then the masked API key, and discovers models automatically. If you already logged in but no Nanaho models appeared, run `/nanaho setup`: enter the endpoint once and the plugin reuses your saved key to discover models immediately, without restarting. You can also change the endpoint later through this command.
 
 Enter the key only in the masked login prompt, then choose a `nanaho/…` model. omp stores the key in its own credential backend (or configured auth broker), not in this repository. Hosts unable to mask input reject the secret prompt. `/logout nanaho` removes stored credentials. `NANAHO_API_KEY` is an optional environment fallback; a saved Nanaho login takes precedence. Logout does not unset an environment key.
 
@@ -35,13 +35,14 @@ To keep the plugin enabled across sessions, run from this directory:
 omp plugin link .
 ```
 
-Restart omp after changing extension source. Continue setting `NANAHO_BASE_URL` in your shell environment when launching omp.
+Restart omp after changing extension source. Endpoint settings and login credentials persist across restarts; no shell export is needed. `NANAHO_BASE_URL` remains an optional fallback when no native plugin endpoint setting exists. Once linked, the endpoint can also be managed with `omp plugin config set nanaho-omp baseUrl <gateway-api-url>` before starting omp.
 
 ## Commands
 
 | Command | Behavior |
 | --- | --- |
 | `/nanaho` | Setup menu; API-key action prepares `/login nanaho` in the composer |
+| `/nanaho setup` | Save the gateway endpoint in native plugin settings and immediately discover models using the existing login |
 | `/nanaho status` | Key presence, endpoint, and loaded model count; never prints the key |
 | `/model` | Native model selection and registered models.dev pricing |
 | `/nanaho refresh` | Reload gateway models and current models.dev metadata |
@@ -52,10 +53,10 @@ Restart omp after changing extension source. Continue setting `NANAHO_BASE_URL` 
 
 The plugin joins these live sources:
 
-1. `${NANAHO_BASE_URL}/models`: authoritative available IDs and `owned_by`.
-2. `${NANAHO_BASE_URL}/models?client_version=0.159.0`: Sub2API/Codex capability manifest; live context windows and image support override catalog metadata.
+1. `${baseUrl}/models`: authoritative available IDs and `owned_by`.
+2. `${baseUrl}/models?client_version=0.159.0`: Sub2API/Codex capability manifest; live context windows and image support override catalog metadata.
 3. `https://models.dev/api.json`: exact `owned_by` provider and model-ID matches supply prices, output limits, modalities, and reasoning support.
-4. `${NANAHO_BASE_URL}/usage`: authoritative key quota, used amount, remaining amount, and reset window.
+4. `${baseUrl}/usage`: authoritative key quota, used amount, remaining amount, and reset window.
 
 All requests reject redirects. The Nanaho key is attached only to gateway requests, never to models.dev. Discovery requests have a 10-second deadline; Responses streaming retains the requested `3_000_000` ms idle timeout and OpenAI reasoning compatibility settings.
 
@@ -73,7 +74,7 @@ bun test
 omp plugin install --dry-run .
 ```
 
-Tests cover pricing identity/units/context tiers, unknown versus published-zero prices, malformed rate cards, mixed/absent/total-only quotas, exhaustion and overage, reset-time precedence, and sanitized request failures. No real credentials or live API requests are used by tests.
+Tests cover endpoint URL normalization and rejection of credential-bearing URLs, pricing identity/units/context tiers, unknown versus published-zero prices, malformed rate cards, mixed/absent/total-only quotas, exhaustion and overage, reset-time precedence, and sanitized request failures. No real credentials or live API requests are used by tests.
 
 ## References
 
